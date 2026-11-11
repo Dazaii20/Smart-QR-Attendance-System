@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { connection } from "next/server";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { AttendCheckIn } from "@/components/check-in-confirm";
 
 export default function AttendPage({ params }: { params: Promise<{ token: string }> }) {
   return (

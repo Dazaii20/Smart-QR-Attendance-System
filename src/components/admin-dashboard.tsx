@@ -17,6 +17,7 @@ type SessionRow = {
 };
 
 type AttendanceRow = {
+  session_id: string;
   scanned_at: string;
   attendance_sessions: { title: string; course: string } | { title: string; course: string }[] | null;
   profiles: { full_name: string | null } | { full_name: string | null }[] | null;
@@ -62,7 +63,7 @@ export function AdminDashboard({ email, name, baseUrl }: Props) {
   const loadRecords = useCallback(async () => {
     const { data } = await createClient()
       .from("attendance_records")
-      .select("scanned_at, attendance_sessions(title, course), profiles(full_name)")
+      .select("session_id, scanned_at, attendance_sessions(title, course), profiles(full_name)")
       .order("scanned_at", { ascending: false });
     setRecords((data as unknown as AttendanceRow[]) ?? []);
   }, []);
@@ -71,7 +72,18 @@ export function AdminDashboard({ email, name, baseUrl }: Props) {
     setOrigin(baseUrl || window.location.origin);
     loadSessions();
     loadRecords();
+    const timer = window.setInterval(() => {
+      loadSessions();
+      loadRecords();
+    }, 10_000);
+    return () => window.clearInterval(timer);
   }, [baseUrl, loadSessions, loadRecords]);
+
+  const counts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const record of records) map.set(record.session_id, (map.get(record.session_id) ?? 0) + 1);
+    return map;
+  }, [records]);
 
   async function createSession(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -155,7 +167,7 @@ export function AdminDashboard({ email, name, baseUrl }: Props) {
                       <div className="upcoming-row" key={session.id} style={{ flexWrap: "wrap", gap: "12px" }}>
                         <div className="upcoming-copy">
                           <strong>{session.title}</strong>
-                          <small>{session.course} · {status.label} · closes {new Date(session.closes_at).toLocaleString("en-NG")}</small>
+                          <small>{session.course} · {status.label} · {counts.get(session.id) ?? 0} checked in · closes {new Date(session.closes_at).toLocaleString("en-NG")}</small>
                         </div>
                         <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                           <button className="button button-light" type="button" onClick={() => setSelected(session)}>View QR</button>
@@ -211,7 +223,7 @@ export function AdminDashboard({ email, name, baseUrl }: Props) {
               <div style={{ background: "#fff", padding: "24px", borderRadius: "12px", display: "inline-block" }}>
                 <QRCode value={`${origin}/attend/${selected.qr_token}`} size={280} />
               </div>
-              <p className="empty-inline" style={{ marginTop: "12px" }}>Valid until {new Date(selected.closes_at).toLocaleString("en-NG")}</p>
+              <p className="empty-inline" style={{ marginTop: "12px" }}>{counts.get(selected.id) ?? 0} checked in · valid until {new Date(selected.closes_at).toLocaleString("en-NG")}</p>
               <div style={{ display: "flex", gap: "8px", justifyContent: "center", marginTop: "12px" }}>
                 <button className="button button-light" type="button" onClick={() => copyLink(selected.qr_token)}>{copied === selected.qr_token ? "Copied!" : "Copy link"}</button>
                 <button className="button button-primary" type="button" onClick={() => setSelected(null)}>Done</button>

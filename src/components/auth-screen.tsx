@@ -5,7 +5,8 @@ import { createClient } from "@/lib/supabase/client";
 
 type AuthMode = "signin" | "signup";
 
-export function AuthScreen() {
+export function AuthScreen({ next = "/" }: { next?: string }) {
+  const checkingIn = next.startsWith("/attend/");
   const [mode, setMode] = useState<AuthMode>("signin");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -27,7 +28,7 @@ export function AuthScreen() {
       : await supabase.auth.signUp({
           email,
           password,
-          options: { data: { full_name: fullName }, emailRedirectTo: `${window.location.origin}/auth/callback` },
+          options: { data: { full_name: fullName }, emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}` },
         });
 
     setLoading(false);
@@ -39,7 +40,7 @@ export function AuthScreen() {
       setNotice("Check your email to confirm your account, then sign in.");
       return;
     }
-    window.location.assign("/");
+    window.location.assign(next);
   }
 
   function changeMode(nextMode: AuthMode) {
@@ -65,6 +66,7 @@ export function AuthScreen() {
           <p className="eyebrow">{mode === "signin" ? "WELCOME BACK" : "GET STARTED"}</p>
           <h2>{mode === "signin" ? "Sign in to your account" : "Create your account"}</h2>
           <p className="auth-subtitle">{mode === "signin" ? "Your attendance record, right where you left it." : "Join your SIWES attendance workspace."}</p>
+          {checkingIn && <p className="auth-notice" role="status">Sign in to finish checking in. You’ll go straight back to your session.</p>}
           <div className="auth-tabs" role="tablist" aria-label="Authentication">
             <button className={`auth-tab ${mode === "signin" ? "active" : ""}`} onClick={() => changeMode("signin")} type="button">Sign in</button>
             <button className={`auth-tab ${mode === "signup" ? "active" : ""}`} onClick={() => changeMode("signup")} type="button">Create account</button>

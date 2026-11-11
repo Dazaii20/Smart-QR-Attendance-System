@@ -87,12 +87,6 @@ using ((select auth.uid()) = id);
 revoke update on public.profiles from authenticated;
 grant select on public.profiles to authenticated;
 
--- Admins can read every profile so attendance lists show student names.
-drop policy if exists "Admins can read all profiles" on public.profiles;
-create policy "Admins can read all profiles"
-on public.profiles for select to authenticated
-using ((select public.is_admin()));
-
 -- ---------------------------------------------------------------------------
 -- Role helper
 -- ---------------------------------------------------------------------------
@@ -237,3 +231,82 @@ $$;
 
 revoke all on function public.mark_attendance(uuid) from public;
 grant execute on function public.mark_attendance(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Student-facing session lookups. These never expose QR tokens.
+-- ---------------------------------------------------------------------------
+
+-- Session details for a scanned QR code, shown before the student confirms.
+create or replace function public.session_for_token(p_qr_token uuid)
+returns table (
+  session_id uuid,
+  title text,
+  course text,
+  starts_at timestamptz,
+  closes_at timestamptz,
+  is_open boolean,
+  already_marked boolean,
+  marked_at timestamptz
+)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select
+    s.id,
+    s.title,
+    s.course,
+    s.starts_at,
+    s.closes_at,
+    s.cancelled_at is null and now() >= s.starts_at and now() <= s.closes_at,
+    r.scanned_at is not null,
+    r.scanned_at
+  from public.attendance_sessions s
+  left join public.attendance_records r
+    on r.session_id = s.id and r.student_id = auth.uid()
+  where s.qr_token = p_qr_token
+    and auth.uid() is not null;
+$$;
+
+revoke all on function public.session_for_token(uuid) from public;
+grant execute on function public.session_for_token(uuid) to authenticated;
+
+-- Every session with the signed-in student's attendance status.
+create or replace function public.my_sessions()
+returns table (
+  session_id uuid,
+  title text,
+  course text,
+  starts_at timestamptz,
+  closes_at timestamptz,
+  status text,
+  attended_at timestamptz
+)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select
+    s.id,
+    s.title,
+    s.course,
+    s.starts_at,
+    s.closes_at,
+    case
+      when s.cancelled_at is not null then 'ended'
+      when now() < s.starts_at then 'scheduled'
+      when now() > s.closes_at then 'closed'
+      else 'open'
+    end,
+    r.scanned_at
+  from public.attendance_sessions s
+  left join public.attendance_records r
+    on r.session_id = s.id and r.student_id = auth.uid()
+  where auth.uid() is not null
+  order by s.starts_at desc;
+$$;
+
+revoke all on function public.my_sessions() from public;
+grant execute on function public.my_sessions() to authenticated;
